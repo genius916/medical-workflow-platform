@@ -117,7 +117,8 @@ function extractJson(content: string): string {
 export function deepseekApiPlugin(apiKey: string): Plugin {
   // 本地开发默认用 DeepSeek 官网 API（与生产端一致）
   const apiBase = 'https://api.deepseek.com/v1'
-  const modelName = process.env.API_MODEL || 'deepseek-chat'
+  // DeepSeek 官网模型：旧版 deepseek-chat 已下线，现支持 deepseek-v4-pro / deepseek-v4-flash
+  const modelName = process.env.API_MODEL || 'deepseek-v4-flash'
   return {
     name: 'deepseek-api-plugin',
     configureServer(server) {

@@ -182,7 +182,8 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
     return
   }
   const apiBase = "https://api.deepseek.com/v1"
-  const modelName = process.env.API_MODEL || "deepseek-chat"
+  // DeepSeek 官网模型：旧版 deepseek-chat 已下线，现支持 deepseek-v4-pro / deepseek-v4-flash
+  const modelName = process.env.API_MODEL || "deepseek-v4-flash"
 
   try {
     const body = (req.body || {}) as { topic?: string; extra?: string }
