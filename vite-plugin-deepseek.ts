@@ -33,8 +33,43 @@ const SYSTEM_PROMPT = `你是一位资深的中西医执业医师考试辅导专
 15. distribution.shareLink 是分享链接（设为"https://ythub.work/flow/" + 疾病拼音缩写）
 16. memoryInfographic.diagnosisStandard 是该疾病的诊断标准概述（必须随疾病改变）
 17. memoryInfographic.keyDiagnosisCriteria 是该疾病最具特异性、最必背的诊断标准（必须随疾病改变，是关键指标/阈值/体征）
-18. 【附加要求】用户消息中可能含"【附加要求】xxx"段，是用户对本次生成的额外指令（如"详细列出所有亚型""重点讲房颤的鉴别""补充并发症处理"）。在不违背知识库证型选方的前提下，必须满足这些要求。
-19. 【多亚型疾病展开】对于诊断公式中明确列出多个亚型的疾病（如"快速性心律失常"含窦速、房早、室早、阵发性室上速、房扑、房颤、室速；"急性心肌梗死"含 ST 段抬高型/非 ST 段抬高型），必须在 definition 和 diagnosisPoints 中详细说明各亚型的特征性表现与鉴别要点，不能只给概况。
+18. 【附加要求——硬性满足，违反即为不合格】用户消息中可能含"【附加要求】xxx"段，是用户对本次生成的额外指令。硬性要求如下：
+    (1) 附加要求中给出的具体数值、阈值、分类、分度、分期、条目（如"心率<60次/分""I度/II度/III度房室传导阻滞""病态窦房结综合征心率<50次/分"），必须逐条原样或近原样呈现到 diagnosisPoints / definition / keyDiagnosisCriteria 中，不得概括化、不得简化合并、不得遗漏任何一条。
+    (2) 附加要求中若列出 N 个条目，diagnosisPoints 至少展开 N 条对应内容，每条对应一个亚型/分度，严禁压缩成 1-2 句概况。
+    (3) 【禁止用"或"合并条目】严禁写成"窦性心动过缓、房室传导阻滞或病态窦房结综合征"这种把多个亚型塞进一句话的概况式表述。每个亚型必须是独立的一条 diagnosisPoints，且包含其特异性数值/分度标准。
+    (4) 【禁止一句话覆盖】严禁用"符合...的特异性表现"这类模糊话术一笔带过，必须把每个亚型的具体诊断标准（数值、分度、心电图特征）写出来。
+    (5) 【禁止自相矛盾】全文同一指标的前后数值必须完全一致，严禁出现"一处<60、另一处<50"的矛盾。若附加要求与知识库默认数值不同，以附加要求为准。
+    (6) 在不违背知识库证型选方的前提下，必须满足附加要求的其他指令（如"重点讲房颤的鉴别""补充并发症处理"）。
+19. 【多亚型疾病展开——硬性】凡诊断公式或附加要求中列出多个亚型/分度/分期的疾病，必须在 definition 和 diagnosisPoints 中逐条详细说明各亚型的特征性表现与鉴别要点，不得只给概况、不得合并条目。例如：
+    - 快速性心律失常：窦速、房早、室早、阵发性室上速、房扑、房颤、室速，逐条列心电图特征。
+    - 缓慢性心律失常：窦性心动过缓、房室传导阻滞(I度/II度I型/II度II型/III度)、病态窦房结综合征，逐条列诊断标准与数值。
+    - 急性心肌梗死：ST段抬高型/非ST段抬高型，分别说明。
+20. 【口诀格式——硬性规则，违反任意一条即为不合格】memoryCard.mnemonic 和 memoryInfographic.formulaMnemonic 必须是一首对仗工整、一韵到底、字数全篇严格对称、朗朗上口的口诀。硬性要求如下：
+    (1)【字数严格对称·全篇一致】整首口诀只允许采用以下四种句式之一，且全篇每一小句都必须是该字数，严禁任何一句多一字或少一字：
+        - 七字句：每小句恰好 7 字
+        - 三三句：每小句为"3字+3字"
+        - 四四句：每小句为"4字+4字"
+        - 五五句：每小句为"5字+5字"
+    (2)【长方名必须缩写】若某证型的方剂名（尤其含"合"字的复方，如"参附汤合桂枝甘草龙骨牡蛎汤""苓桂术甘汤合丹参饮"）超过目标句式容纳字数，必须缩写为该方的核心标识（取主方名或关键药味缩写），并在 mnemonicExplain 中注明全称。例如：
+        - "参附汤合桂枝甘草龙骨牡蛎汤" → 七字句内可缩为"参附桂甘牡"或"参附桂枝汤"
+        - "苓桂术甘汤合丹参饮" → 可缩为"苓桂丹参汤"
+        - "柴胡疏肝散合胃苓汤" → 可缩为"柴疏合胃苓"或"柴疏胃苓汤"
+        严禁因方名过长就破坏字数对称（如写成7字句+5字句）。
+    (3)【一韵到底】全首口诀每一小句的末字必须押同一韵（允许近韵，不可乱韵、不可跳韵）。若方剂名末字不押该韵，须用谐音字替换或加垫字凑韵（如"生脉饮"→"生脉方"以与"保元汤"同押 ang 韵；"桃仁红花煎"→"桃红方"）。
+    (4)【对仗对称】上下句结构相同（证型关键词 + 方名缩写），词性相对，节奏一致。
+    (5)【一句一证型一方·全覆盖】每一小句对应一个证型 + 其代表方剂，必须覆盖该疾病在知识库中的全部证型，不可遗漏、不可合并。
+    (6)【精简精准·谐音助记】仅用证型关键词 + 方名，不堆砌症状；鼓励用谐音、联想助记。
+    (7)【生成后自检——必做】写完口诀后，必须逐句数字数，确认每一小句字数完全相同、末字同韵；若发现长短不一或跳韵，必须改写至完全合规后再输出。
+    错误示例（禁止）：
+      ✗ "心阳参附桂甘牡，心肾参附真武汤，气阴炙甘草，痰浊涤痰汤，心脉桃仁红花煎"（7/7/5/5/7，字数严重不一，且不押韵）
+      ✗ "气虚血瘀保元汤，气阴两虚证用生脉饮"（前7字、后8字）
+      ✗ "心虚胆怯安神定，心血不足归脾汤"（"定""汤"不押韵）
+    正确示例1（慢性心衰·七字句·押 ang 韵·4证型全覆盖）：
+      ✓ "气虚血瘀保元汤，气阴两虚生脉方，阳虚水泛真武汤，痰饮阻肺苓桂匡。"
+    正确示例2（缓慢性心律失常·七字句·押 ang 韵·5证型全覆盖，长方名已缩写）：
+      ✓ "心阳不振参附汤，心肾阳虚真武匡，气阴两虚炙草汤，痰浊涤痰桃红方，心脉瘀阻桃红汤。"
+      （注："参附汤"代"参附汤合桂枝甘草龙骨牡蛎汤"；"真武匡"代"参附汤合真武汤"取真武+谐音；"炙草汤"代"炙甘草汤"；"桃红方/汤"代"桃仁红花煎"。末字汤/匡/汤/方/汤均押 ang 韵。）
+    memoryCard.mnemonicExplain 和 memoryInfographic.formulaMnemonicExplain 须逐句拆解每句口诀对应的证型 + 方剂全称 + 关键病机 + 缩写说明，便于使用者理解记忆。
 
 请直接返回JSON，不要有任何额外文字或markdown格式标记。
 
@@ -95,6 +130,162 @@ JSON 顶层结构示例（必须严格按此字段结构填充）：
 ${examKnowledge}
 `
 
+// ===== 后处理校验：LLM 不擅长数字数，必须外部强校验 + 自动重试 =====
+
+// 拆分口诀小句：按中文标点（，；。）拆分，剔除空串
+function splitMnemonicClauses(mnemonic: string): string[] {
+  return mnemonic
+    .split(/[，；。\n,;.]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+// 末字拼音末尾（极简映射，仅覆盖口诀常用字；未命中则跳过韵脚校验）
+const CHAR_TAIL: Record<string, string> = {
+  汤: 'ang', 方: 'ang', 匡: 'ang', 阳: 'ang', 旺: 'ang', 凉: 'ang', 香: 'ang', 羌: 'ang', 姜: 'ang', 邦: 'ang',
+  丸: 'an', 丹: 'an', 散: 'an', 甘: 'an', 寒: 'an', 欢: 'an', 宽: 'an', 还: 'an', 参: 'an', 肝: 'an',
+  饮: 'in', 金: 'in', 心: 'in', 林: 'in', 阴: 'in', 琴: 'in',
+  桂: 'ei', 牡: 'u', 草: 'ao', 脾: 'i', 血: 'e', 瘀: 'ü', 痰: 'an',
+  黄: 'ang', 苓: 'ing', 泻: 'e', 萎: 'ei', 薤: 'ai', 枝: 'i', 附: 'u', 龙: 'ong',
+}
+
+function charRhymeTail(ch: string): string | null {
+  if (CHAR_TAIL[ch]) return CHAR_TAIL[ch]
+  return null
+}
+
+interface MnemonicIssue {
+  field: string
+  reason: string
+  detail: string
+}
+
+// 校验单条口诀：字数全篇一致 + 末字同韵
+function checkMnemonic(field: string, mnemonic: string): MnemonicIssue[] {
+  const issues: MnemonicIssue[] = []
+  if (!mnemonic) {
+    issues.push({ field, reason: 'empty', detail: '口诀为空' })
+    return issues
+  }
+  const clauses = splitMnemonicClauses(mnemonic)
+  if (clauses.length < 2) {
+    issues.push({ field, reason: 'too_short', detail: `口诀仅 ${clauses.length} 句，应覆盖全部证型` })
+    return issues
+  }
+  // 字数一致性：每小句字数必须完全相同
+  const lenSet = new Set(clauses.map((c) => c.length))
+  if (lenSet.size > 1) {
+    issues.push({
+      field,
+      reason: 'uneven_length',
+      detail: `各句字数不一致：${clauses.map((c, i) => `第${i + 1}句「${c}」=${c.length}字`).join('；')}，必须全部相同`,
+    })
+  }
+  // 末字同韵
+  const tails = clauses.map((c) => charRhymeTail(c[c.length - 1]))
+  const validTails = tails.filter((t): t is string => t !== null)
+  if (validTails.length === tails.length && validTails.length > 1) {
+    const tailSet = new Set(validTails)
+    if (tailSet.size > 1) {
+      issues.push({
+        field,
+        reason: 'not_rhymed',
+        detail: `末字不同韵：${clauses.map((c, i) => `「${c}」末字「${c[c.length - 1]}」=${tails[i]}`).join('；')}，必须同韵`,
+      })
+    }
+  }
+  return issues
+}
+
+// 校验附加要求里的条目是否在 diagnosisPoints 中逐条、独立出现
+function checkSubtypes(extra: string, diagnosisPoints: string[]): MnemonicIssue[] {
+  const issues: MnemonicIssue[] = []
+  if (!extra) return issues
+  // 全角/半角罗马数字归一化（Ⅱ ↔ II），便于匹配
+  const norm = (s: string): string =>
+    s.replace(/[ⅡⅢⅣⅥⅦⅧⅨⅩ]/g, (ch) => ({ 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X' }[ch] || ch))
+     .replace(/[lⅰ]/g, 'I')
+  const lines = extra.split('\n').map((l) => l.trim()).filter(Boolean)
+  const subItems: string[] = []
+  for (const line of lines) {
+    // 顶层编号："1.窦性心动过缓" "2.房室传导阻滞" "3.病态窦房结综合征"
+    let m = line.match(/^\d+[.、)]\s*(.+)$/)
+    if (m) {
+      const title = m[1].split(/[(:：（]/)[0].trim()
+      if (title) subItems.push(norm(title))
+      continue
+    }
+    // 子层级编号："(1) I度" "(2) Ⅱ度" "(3) Ⅲ度" "1)l型" "2)Ⅱ型"
+    m = line.match(/^\(?\d+\)\s*(.+)$/)
+    if (m) {
+      const title = m[1].split(/[(:：（]/)[0].trim()
+      if (title && title.length >= 2) subItems.push(norm(title))
+    }
+  }
+  if (subItems.length === 0) return issues
+  const normDp = diagnosisPoints.map((dp) => norm(dp.trim()))
+  // 区分顶层条目（疾病名）和子层级条目（分度/分型），squeeze 检测只用顶层条目
+  const topItems = subItems.filter((it) => !/^[IVXⅠⅡⅢⅣⅥⅦⅧⅨⅩ]+度$|^[IVXⅠⅡⅢⅣⅥⅦⅧⅨⅩ]+型$/.test(it))
+  // 检查每个条目是否作为"独立一条 diagnosisPoints 的主题"出现
+  const missing: string[] = []
+  for (const item of subItems) {
+    const asStandalone = normDp.some((s) => {
+      return new RegExp(`^(?:\\d+[.、)]\\s*)?${escapeReg(item)}`).test(s) || s.includes(item)
+    })
+    if (!asStandalone) {
+      missing.push(item)
+    }
+  }
+  // 检测"或"串列模式：一条 diagnosisPoints 里用"或"连接多个诊断特征
+  const orSeriesPattern = /[^，。；\n]{2,}，?或[^，。；\n]{2,}，?或[^，。；\n]{2,}/
+  const mergedDp = diagnosisPoints.filter((dp) => orSeriesPattern.test(dp))
+  // 检测多个"顶层亚型"挤在同一条 diagnosisPoints 里（如"窦缓...房室传导阻滞...病窦"在一条里）
+  const squeezePattern = diagnosisPoints.filter((dp) => {
+    const s = norm(dp)
+    let hits = 0
+    for (const item of topItems) if (s.includes(item)) hits++
+    return hits >= 3
+  })
+  if (missing.length > 0) {
+    issues.push({
+      field: 'diagnosisPoints',
+      reason: 'subtype_missing',
+      detail: `附加要求列出的条目未在 diagnosisPoints 中逐条独立出现：${missing.join('、')}。必须每个亚型/分度独立成一条，含其特异性数值/分度标准，禁用"或"合并、禁用一句话覆盖。`,
+    })
+  }
+  if (mergedDp.length > 0) {
+    issues.push({
+      field: 'diagnosisPoints',
+      reason: 'merged_by_or',
+      detail: `检测到用"或"串列多个诊断特征的概况式表述（如"${mergedDp[0].slice(0, 60)}..."），必须拆成独立条目。`,
+    })
+  }
+  if (squeezePattern.length > 0) {
+    issues.push({
+      field: 'diagnosisPoints',
+      reason: 'squeezed_in_one',
+      detail: `检测到多个亚型被挤在同一条 diagnosisPoints 里（"${squeezePattern[0].slice(0, 60)}..."），必须每个亚型独立成条。`,
+    })
+  }
+  return issues
+}
+
+function escapeReg(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// 校验整份生成结果
+function validateResult(parsed: any, extra: string): MnemonicIssue[] {
+  const issues: MnemonicIssue[] = []
+  const mc = parsed?.memoryCard
+  const mi = parsed?.memoryInfographic
+  if (mc?.mnemonic) issues.push(...checkMnemonic('memoryCard.mnemonic', mc.mnemonic))
+  if (mi?.formulaMnemonic) issues.push(...checkMnemonic('memoryInfographic.formulaMnemonic', mi.formulaMnemonic))
+  const dp: string[] = Array.isArray(mc?.diagnosisPoints) ? mc.diagnosisPoints : []
+  issues.push(...checkSubtypes(extra, dp))
+  return issues
+}
+
 /**
  * 从模型输出里提取 JSON 字符串（兜底，DeepSeek 官网 JSON mode 下通常用不到）。
  */
@@ -154,55 +345,88 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
             }
 
             // 用户消息：疾病名 + 附加要求（若有）
-            const userMessage = extra?.trim()
-              ? `${topic}\n\n【附加要求】${extra.trim()}`
+            const extraTrim = extra?.trim() || ''
+            const userMessage = extraTrim
+              ? `${topic}\n\n【附加要求】${extraTrim}`
               : topic
 
-            // DeepSeek 官网 + JSON mode，非流式，返回严格 JSON
-            const requestBody: Record<string, unknown> = {
-              model: modelName,
-              messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: userMessage },
-              ],
-              temperature: 0.3,
-              response_format: { type: 'json_object' },
+            // 调用 DeepSeek（带重试）：首轮用配置模型，校验失败则升级到 pro 并附错误反馈重试一次
+            async function callDeepSeek(messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
+              const requestBody: Record<string, unknown> = {
+                model,
+                messages,
+                temperature: 0.3,
+                response_format: { type: 'json_object' },
+              }
+              const response = await fetch(`${apiBase}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify(requestBody),
+              })
+              if (!response.ok) {
+                const errorText = await response.text()
+                throw new Error(`DeepSeek API 错误: ${errorText}`)
+              }
+              const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+              const content = data.choices?.[0]?.message?.content
+              if (!content) throw new Error('API 返回内容为空')
+              return content
             }
 
-            const response = await fetch(`${apiBase}/chat/completions`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify(requestBody),
-            })
-
-            if (!response.ok) {
-              const errorText = await response.text()
-              res.statusCode = response.status
-              res.end(JSON.stringify({ error: `DeepSeek API 错误: ${errorText}` }))
-              return
-            }
-
-            const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-            const content = data.choices?.[0]?.message?.content
-
-            if (!content) {
-              res.statusCode = 500
-              res.end(JSON.stringify({ error: 'API 返回内容为空' }))
-              return
-            }
-
-            // 校验并返回（extractJson 兜底，JSON mode 下通常直接通过）
+            let content: string
             try {
-              const parsed = JSON.parse(extractJson(content))
-              res.statusCode = 200
-              res.end(JSON.stringify(parsed))
+              content = await callDeepSeek(
+                [
+                  { role: 'system', content: SYSTEM_PROMPT },
+                  { role: 'user', content: userMessage },
+                ],
+                modelName,
+              )
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e)
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: msg }))
+              return
+            }
+
+            // JSON 解析
+            let parsed: any
+            try {
+              parsed = JSON.parse(extractJson(content))
             } catch {
               res.statusCode = 500
               res.end(JSON.stringify({ error: '解析 JSON 失败', raw: content }))
+              return
             }
+
+            // 后处理校验：口诀字数一致 + 亚型逐条出现
+            const issues = validateResult(parsed, extraTrim)
+            if (issues.length > 0) {
+              // 校验失败：升级到 pro 模型 + 错误反馈重试一次
+              const feedback = issues.map((i) => `[${i.field}] ${i.reason}: ${i.detail}`).join('\n')
+              const retrySystem = `${SYSTEM_PROMPT}\n\n【上一轮生成结果校验失败，必须修复以下问题后重新输出完整 JSON】\n${feedback}\n\n注意：\n- 口诀每小句字数必须完全相同，长方名必须缩写（如"参附汤合桂枝甘草龙骨牡蛎汤"→"参附桂枝汤"），方名末字不押韵时用谐音字（如"生脉饮"→"生脉方"）。\n- 附加要求里每个编号条目必须是 diagnosisPoints 中独立的一条，禁用"或"合并、禁用一句话覆盖。\n- 修复后只输出完整 JSON，不要任何额外文字。`
+              try {
+                const retryContent = await callDeepSeek(
+                  [
+                    { role: 'system', content: retrySystem },
+                    { role: 'user', content: userMessage },
+                  ],
+                  'deepseek-v4-pro',
+                )
+                // 用重试结果（即使仍有小瑕疵，pro 通常更好）
+                res.statusCode = 200
+                res.end(retryContent)
+                return
+              } catch {
+                // 重试失败则返回首轮结果（降级）
+              }
+            }
+
+            res.statusCode = 200
+            res.end(JSON.stringify(parsed))
           } catch (err) {
             res.statusCode = 500
             res.end(JSON.stringify({
