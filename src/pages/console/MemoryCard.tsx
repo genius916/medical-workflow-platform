@@ -273,12 +273,14 @@ export default function MemoryCard({ data, loading }: MemoryCardProps) {
             >
               {data.mnemonic}
             </p>
-            <p
-              className="mt-2 m-0 text-xs"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              {data.mnemonicExplain}
-            </p>
+            {data.mnemonicExplain && data.mnemonicExplain.trim() && (
+              <p
+                className="mt-2 m-0 text-xs"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                {data.mnemonicExplain}
+              </p>
+            )}
           </div>
         </div>
       </div>
