@@ -16,7 +16,7 @@ export default function ConsolePage() {
   const [codeInput, setCodeInput] = useState('')
   const miRef = useRef<HTMLElement>(null)
 
-  const handleGenerate = async (topic: string) => {
+  const handleGenerate = async (topic: string, extra?: string) => {
     showToast('AI 正在生成速记内容…预计 3-5 分钟完成')
     miRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     if (miRef.current) {
@@ -30,7 +30,7 @@ export default function ConsolePage() {
       }, 1500)
     }
     try {
-      await generate(topic)
+      await generate(topic, extra)
       showToast('速记内容生成完成！')
     } catch (err) {
       const message = err instanceof Error ? err.message : '生成失败'

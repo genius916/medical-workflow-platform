@@ -28,13 +28,14 @@ const loadingWorkflowSteps: WorkflowStep[] = [
 ]
 
 interface LeftPanelProps {
-  onGenerate: (topic: string) => void
+  onGenerate: (topic: string, extra?: string) => void
   loading?: boolean
 }
 
 export default function LeftPanel({ onGenerate, loading }: LeftPanelProps) {
   const { showToast } = useToast()
   const [topic, setTopic] = useState(DEFAULT_TOPIC)
+  const [extra, setExtra] = useState('')
 
   const workflowSteps = loading ? loadingWorkflowSteps : baseWorkflowSteps
 
@@ -45,7 +46,7 @@ export default function LeftPanel({ onGenerate, loading }: LeftPanelProps) {
 
   const handleGenerate = () => {
     if (loading) return
-    onGenerate(topic)
+    onGenerate(topic, extra || undefined)
   }
 
   return (
@@ -80,6 +81,31 @@ export default function LeftPanel({ onGenerate, loading }: LeftPanelProps) {
         className="w-full box-border rounded-lg p-3 text-sm leading-[1.5]"
         style={{
           minHeight: '88px',
+          border: '1px solid var(--input)',
+          color: 'var(--foreground)',
+          backgroundColor: loading ? 'var(--muted)' : 'var(--background)',
+          resize: 'vertical',
+          opacity: loading ? 0.6 : 1,
+          cursor: loading ? 'not-allowed' : 'text',
+        }}
+      />
+
+      <label
+        htmlFor="exam-extra"
+        className="block mt-3.5 mb-1.5 text-xs"
+        style={{ color: 'var(--muted-foreground)' }}
+      >
+        附加要求（可选）
+      </label>
+      <textarea
+        id="exam-extra"
+        value={extra}
+        onChange={(e) => setExtra(e.target.value)}
+        disabled={loading}
+        placeholder="如：详细列出所有亚型 / 重点讲房颤的鉴别 / 补充并发症处理"
+        className="w-full box-border rounded-lg p-3 text-sm leading-[1.5]"
+        style={{
+          minHeight: '64px',
           border: '1px solid var(--input)',
           color: 'var(--foreground)',
           backgroundColor: loading ? 'var(--muted)' : 'var(--background)',

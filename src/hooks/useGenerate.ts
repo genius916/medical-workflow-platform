@@ -209,7 +209,7 @@ export function useGenerate() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GeneratedResult>(defaultResult)
 
-  const generate = useCallback(async (topic: string): Promise<GeneratedResult> => {
+  const generate = useCallback(async (topic: string, extra?: string): Promise<GeneratedResult> => {
     setLoading(true)
     setError(null)
     try {
@@ -226,7 +226,7 @@ export function useGenerate() {
           'Content-Type': 'application/json',
           ...(accessCode ? { 'X-Access-Code': accessCode } : {}),
         },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic, extra: extra?.trim() || undefined }),
         // DeepSeek 官网 + JSON mode 实测 5-10s 完成。
         // Vercel Node Runtime 函数超时 60s，前端给 90s 总超时留足余量。
         signal: AbortSignal.timeout(90000),

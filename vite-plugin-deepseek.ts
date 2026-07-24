@@ -33,6 +33,8 @@ const SYSTEM_PROMPT = `你是一位资深的中西医执业医师考试辅导专
 15. distribution.shareLink 是分享链接（设为"https://ythub.work/flow/" + 疾病拼音缩写）
 16. memoryInfographic.diagnosisStandard 是该疾病的诊断标准概述（必须随疾病改变）
 17. memoryInfographic.keyDiagnosisCriteria 是该疾病最具特异性、最必背的诊断标准（必须随疾病改变，是关键指标/阈值/体征）
+18. 【附加要求】用户消息中可能含"【附加要求】xxx"段，是用户对本次生成的额外指令（如"详细列出所有亚型""重点讲房颤的鉴别""补充并发症处理"）。在不违背知识库证型选方的前提下，必须满足这些要求。
+19. 【多亚型疾病展开】对于诊断公式中明确列出多个亚型的疾病（如"快速性心律失常"含窦速、房早、室早、阵发性室上速、房扑、房颤、室速；"急性心肌梗死"含 ST 段抬高型/非 ST 段抬高型），必须在 definition 和 diagnosisPoints 中详细说明各亚型的特征性表现与鉴别要点，不能只给概况。
 
 请直接返回JSON，不要有任何额外文字或markdown格式标记。
 
@@ -143,19 +145,24 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
         req.on('data', (chunk) => { body += chunk })
         req.on('end', async () => {
           try {
-            const { topic } = JSON.parse(body)
+            const { topic, extra } = JSON.parse(body)
             if (!topic?.trim()) {
               res.statusCode = 400
               res.end(JSON.stringify({ error: '缺少 topic 参数' }))
               return
             }
 
+            // 用户消息：疾病名 + 附加要求（若有）
+            const userMessage = extra?.trim()
+              ? `${topic}\n\n【附加要求】${extra.trim()}`
+              : topic
+
             // DeepSeek 官网 + JSON mode，非流式，返回严格 JSON
             const requestBody: Record<string, unknown> = {
               model: modelName,
               messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
-                { role: 'user', content: topic },
+                { role: 'user', content: userMessage },
               ],
               temperature: 0.3,
               response_format: { type: 'json_object' },
