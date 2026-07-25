@@ -352,7 +352,8 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
               ? `${topic}\n\n【附加要求】${extraTrim}`
               : topic
 
-            // 调用 DeepSeek（带重试）：首轮用配置模型，校验失败则升级到 pro 并附错误反馈重试一次
+            // 调用 DeepSeek（带重试）：首轮用配置模型，校验失败则用同模型 + 错误反馈重试一次
+            // 注意：不升级到 pro，避免首轮+重试叠加超时
             async function callDeepSeek(messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
               const requestBody: Record<string, unknown> = {
                 model,
@@ -360,22 +361,30 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
                 temperature: 0.3,
                 response_format: { type: 'json_object' },
               }
-              const response = await fetch(`${apiBase}/chat/completions`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify(requestBody),
-              })
-              if (!response.ok) {
-                const errorText = await response.text()
-                throw new Error(`DeepSeek API 错误: ${errorText}`)
+              // 单次 fetch 超时 50s，避免卡死
+              const controller = new AbortController()
+              const timeout = setTimeout(() => controller.abort(), 50000)
+              try {
+                const response = await fetch(`${apiBase}/chat/completions`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                  },
+                  body: JSON.stringify(requestBody),
+                  signal: controller.signal,
+                })
+                if (!response.ok) {
+                  const errorText = await response.text()
+                  throw new Error(`DeepSeek API 错误: ${errorText}`)
+                }
+                const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+                const content = data.choices?.[0]?.message?.content
+                if (!content) throw new Error('API 返回内容为空')
+                return content
+              } finally {
+                clearTimeout(timeout)
               }
-              const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-              const content = data.choices?.[0]?.message?.content
-              if (!content) throw new Error('API 返回内容为空')
-              return content
             }
 
             let content: string
@@ -407,7 +416,7 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
             // 后处理校验：口诀字数一致 + 亚型逐条出现
             const issues = validateResult(parsed, extraTrim)
             if (issues.length > 0) {
-              // 校验失败：升级到 pro 模型 + 错误反馈重试一次
+              // 校验失败：用同模型 + 错误反馈重试一次（不升级 pro，避免叠加超时）
               const feedback = issues.map((i) => `[${i.field}] ${i.reason}: ${i.detail}`).join('\n')
               const retrySystem = `${SYSTEM_PROMPT}\n\n【上一轮生成结果校验失败，必须修复以下问题后重新输出完整 JSON】\n${feedback}\n\n注意：\n- 口诀每小句字数必须完全相同，长方名必须缩写（如"参附汤合桂枝甘草龙骨牡蛎汤"→"参附桂枝汤"），方名末字不押韵时用谐音字（如"生脉饮"→"生脉方"）。\n- 附加要求里每个编号条目必须是 diagnosisPoints 中独立的一条，禁用"或"合并、禁用一句话覆盖。\n- 修复后只输出完整 JSON，不要任何额外文字。`
               try {
@@ -416,9 +425,9 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
                     { role: 'system', content: retrySystem },
                     { role: 'user', content: userMessage },
                   ],
-                  'deepseek-v4-pro',
+                  modelName,
                 )
-                // 用重试结果（即使仍有小瑕疵，pro 通常更好）
+                // 用重试结果（即使仍有小瑕疵，附错误反馈的重试通常更好）
                 res.statusCode = 200
                 res.end(retryContent)
                 return
