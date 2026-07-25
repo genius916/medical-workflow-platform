@@ -183,168 +183,11 @@ JSON 顶层结构示例（必须严格按此字段结构填充）：
 ${examKnowledge}
 `
 
-// ===== 后处理校验：LLM 不擅长数字数，必须外部强校验 + 自动重试 =====
-
-// 拆分口诀小句：按中文标点（，；。）拆分，剔除空串
-function splitMnemonicClauses(mnemonic: string): string[] {
-  return mnemonic
-    .split(/[，；。\n,;.]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-}
-
-// 末字拼音末尾（极简映射，仅覆盖口诀常用字；未命中则跳过韵脚校验）
-const CHAR_TAIL: Record<string, string> = {
-  汤: 'ang', 方: 'ang', 匡: 'ang', 阳: 'ang', 旺: 'ang', 凉: 'ang', 香: 'ang', 羌: 'ang', 姜: 'ang', 邦: 'ang',
-  丸: 'an', 丹: 'an', 散: 'an', 甘: 'an', 寒: 'an', 欢: 'an', 宽: 'an', 还: 'an', 参: 'an', 肝: 'an',
-  饮: 'in', 金: 'in', 心: 'in', 林: 'in', 阴: 'in', 琴: 'in',
-  桂: 'ei', 牡: 'u', 草: 'ao', 脾: 'i', 血: 'e', 瘀: 'ü', 痰: 'an',
-  黄: 'ang', 苓: 'ing', 泻: 'e', 萎: 'ei', 薤: 'ai', 枝: 'i', 附: 'u', 龙: 'ong',
-}
-
-function charRhymeTail(ch: string): string | null {
-  if (CHAR_TAIL[ch]) return CHAR_TAIL[ch]
-  return null
-}
-
-interface MnemonicIssue {
-  field: string
-  reason: string
-  detail: string
-}
-
-// 校验单条口诀：字数全篇一致 + 末字同韵
-function checkMnemonic(field: string, mnemonic: string): MnemonicIssue[] {
-  const issues: MnemonicIssue[] = []
-  if (!mnemonic) {
-    issues.push({ field, reason: 'empty', detail: '口诀为空' })
-    return issues
-  }
-  const clauses = splitMnemonicClauses(mnemonic)
-  if (clauses.length < 2) {
-    issues.push({ field, reason: 'too_short', detail: `口诀仅 ${clauses.length} 句，应覆盖全部证型` })
-    return issues
-  }
-  // 字数一致性：每小句字数必须完全相同
-  const lenSet = new Set(clauses.map((c) => c.length))
-  if (lenSet.size > 1) {
-    const lens = clauses.map((c) => c.length)
-    issues.push({
-      field,
-      reason: 'uneven_length',
-      detail: `各句字数不一致：${clauses.map((c, i) => `第${i + 1}句「${c}」=${c.length}字`).join('；')}，必须全部相同`,
-    })
-  }
-  // 末字同韵
-  const tails = clauses.map((c) => charRhymeTail(c[c.length - 1]))
-  const validTails = tails.filter((t): t is string => t !== null)
-  if (validTails.length === tails.length && validTails.length > 1) {
-    const tailSet = new Set(validTails)
-    if (tailSet.size > 1) {
-      issues.push({
-        field,
-        reason: 'not_rhymed',
-        detail: `末字不同韵：${clauses.map((c, i) => `「${c}」末字「${c[c.length - 1]}」=${tails[i]}`).join('；')}，必须同韵`,
-      })
-    }
-  }
-  return issues
-}
-
-// 校验附加要求里的条目是否在 diagnosisPoints 中逐条、独立出现
-function checkSubtypes(extra: string, diagnosisPoints: string[]): MnemonicIssue[] {
-  const issues: MnemonicIssue[] = []
-  if (!extra) return issues
-  // 全角/半角罗马数字归一化（Ⅱ ↔ II），便于匹配
-  const norm = (s: string): string =>
-    s.replace(/[ⅡⅢⅣⅥⅦⅧⅨⅩ]/g, (ch) => ({ 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X' }[ch] || ch))
-     .replace(/[lⅰ]/g, 'I')
-  const lines = extra.split('\n').map((l) => l.trim()).filter(Boolean)
-  const subItems: string[] = []
-  for (const line of lines) {
-    // 顶层编号："1.窦性心动过缓" "2.房室传导阻滞" "3.病态窦房结综合征"
-    let m = line.match(/^\d+[.、)]\s*(.+)$/)
-    if (m) {
-      const title = m[1].split(/[(:：（]/)[0].trim()
-      if (title) subItems.push(norm(title))
-      continue
-    }
-    // 子层级编号："(1) I度" "(2) Ⅱ度" "(3) Ⅲ度" "1)l型" "2)Ⅱ型"
-    m = line.match(/^\(?\d+\)\s*(.+)$/)
-    if (m) {
-      const title = m[1].split(/[(:：（]/)[0].trim()
-      if (title && title.length >= 2) subItems.push(norm(title))
-    }
-  }
-  if (subItems.length === 0) return issues
-  const normDp = diagnosisPoints.map((dp) => norm(dp.trim()))
-  // 区分顶层条目（疾病名）和子层级条目（分度/分型），squeeze 检测只用顶层条目
-  const topItems = subItems.filter((it) => !/^[IVXⅠⅡⅢⅣⅥⅦⅧⅨⅩ]+度$|^[IVXⅠⅡⅢⅣⅥⅦⅧⅨⅩ]+型$/.test(it))
-  // 检查每个条目是否作为"独立一条 diagnosisPoints 的主题"出现
-  const missing: string[] = []
-  for (const item of subItems) {
-    const asStandalone = normDp.some((s) => {
-      return new RegExp(`^(?:\\d+[.、)]\\s*)?${escapeReg(item)}`).test(s) || s.includes(item)
-    })
-    if (!asStandalone) {
-      missing.push(item)
-    }
-  }
-  // 检测"或"串列模式：一条 diagnosisPoints 里用"或"连接多个诊断特征
-  const orSeriesPattern = /[^，。；\n]{2,}，?或[^，。；\n]{2,}，?或[^，。；\n]{2,}/
-  const mergedDp = diagnosisPoints.filter((dp) => orSeriesPattern.test(dp))
-  // 检测多个"顶层亚型"挤在同一条 diagnosisPoints 里（如"窦缓...房室传导阻滞...病窦"在一条里）
-  const squeezePattern = diagnosisPoints.filter((dp) => {
-    const s = norm(dp)
-    let hits = 0
-    for (const item of topItems) if (s.includes(item)) hits++
-    return hits >= 3
-  })
-  if (missing.length > 0) {
-    issues.push({
-      field: 'diagnosisPoints',
-      reason: 'subtype_missing',
-      detail: `附加要求列出的条目未在 diagnosisPoints 中逐条独立出现：${missing.join('、')}。必须每个亚型/分度独立成一条，含其特异性数值/分度标准，禁用"或"合并、禁用一句话覆盖。`,
-    })
-  }
-  if (mergedDp.length > 0) {
-    issues.push({
-      field: 'diagnosisPoints',
-      reason: 'merged_by_or',
-      detail: `检测到用"或"串列多个诊断特征的概况式表述（如"${mergedDp[0].slice(0, 60)}..."），必须拆成独立条目。`,
-    })
-  }
-  if (squeezePattern.length > 0) {
-    issues.push({
-      field: 'diagnosisPoints',
-      reason: 'squeezed_in_one',
-      detail: `检测到多个亚型被挤在同一条 diagnosisPoints 里（"${squeezePattern[0].slice(0, 60)}..."），必须每个亚型独立成条。`,
-    })
-  }
-  return issues
-}
-
-function escapeReg(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-// 校验整份生成结果
-function validateResult(parsed: any, extra: string): MnemonicIssue[] {
-  const issues: MnemonicIssue[] = []
-  const mc = parsed?.memoryCard
-  const mi = parsed?.memoryInfographic
-  if (mc?.mnemonic) issues.push(...checkMnemonic('memoryCard.mnemonic', mc.mnemonic))
-  if (mi?.formulaMnemonic) issues.push(...checkMnemonic('memoryInfographic.formulaMnemonic', mi.formulaMnemonic))
-  const dp: string[] = Array.isArray(mc?.diagnosisPoints) ? mc.diagnosisPoints : []
-  issues.push(...checkSubtypes(extra, dp))
-  return issues
-}
-
-// Vercel 函数超时：Hobby 60s 上限，Pro 可达 300s。设 120s 兼容。
-// 注意：若首轮 flash + 校验失败重试叠加超过 maxDuration，Vercel 会强制终止返回 504。
-// 因此重试改用 flash（而非 pro），并给单次 fetch 加 50s 超时，确保单次不卡死。
+// Vercel 函数超时：Hobby 60s 上限，Pro 可达 300s。
+// 知识库 59KB + 规则较多，flash 单次生成可能需 40-80s，故设 300s 给足空间。
+// 不再加 fetch 硬超时——让请求自然完成，由 Vercel maxDuration 兜底，避免误杀合法长请求。
 export const config = {
-  maxDuration: 120,
+  maxDuration: 300,
 }
 
 export default async (req: NodeReq, res: NodeRes): Promise<void> => {
@@ -398,7 +241,7 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
       : topic
 
     // 调用 DeepSeek（带重试）：首轮用配置模型，校验失败则用同模型 + 错误反馈重试一次
-    // 注意：不升级到 pro，因为 pro 生成慢，首轮+重试叠加易超 Vercel maxDuration 导致 504。
+    // 不加 fetch 硬超时——让请求自然完成，由 Vercel maxDuration 兜底。
     async function callDeepSeek(messages: Array<{ role: string; content: string }>, model: string): Promise<string> {
       const requestBody: Record<string, unknown> = {
         model,
@@ -406,30 +249,22 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
         temperature: 0.3,
         response_format: { type: "json_object" },
       }
-      // 单次 fetch 超时 50s，避免卡死耗尽 Vercel 函数时长
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 50000)
-      try {
-        const response = await fetch(`${apiBase}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        })
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`DeepSeek API 错误: ${errorText}`)
-        }
-        const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-        const content = data.choices?.[0]?.message?.content
-        if (!content) throw new Error("API 返回内容为空")
-        return content
-      } finally {
-        clearTimeout(timeout)
+      const response = await fetch(`${apiBase}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      })
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`DeepSeek API 错误: ${errorText}`)
       }
+      const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
+      const content = data.choices?.[0]?.message?.content
+      if (!content) throw new Error("API 返回内容为空")
+      return content
     }
 
     let content: string
@@ -456,30 +291,7 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
       return
     }
 
-    // 后处理校验：口诀字数一致 + 亚型逐条出现
-    const issues = validateResult(parsed, extra)
-    if (issues.length > 0) {
-      // 校验失败：用同模型 + 错误反馈重试一次（不升级 pro，避免叠加超时）
-      const feedback = issues.map((i) => `[${i.field}] ${i.reason}: ${i.detail}`).join("\n")
-      const retrySystem = `${SYSTEM_PROMPT}\n\n【上一轮生成结果校验失败，必须修复以下问题后重新输出完整 JSON】\n${feedback}\n\n注意：\n- 口诀每小句字数必须完全相同，长方名必须缩写（如"参附汤合桂枝甘草龙骨牡蛎汤"→"参附桂枝汤"），方名末字不押韵时用谐音字（如"生脉饮"→"生脉方"）。\n- 附加要求里每个编号条目必须是 diagnosisPoints 中独立的一条，禁用"或"合并、禁用一句话覆盖。\n- 修复后只输出完整 JSON，不要任何额外文字。`
-      try {
-        const retryContent = await callDeepSeek(
-          [
-            { role: "system", content: retrySystem },
-            { role: "user", content: userMessage },
-          ],
-          modelName,
-        )
-        // 用重试结果（即使仍有小瑕疵，附错误反馈的重试通常更好）
-        applyCors(req, res)
-        res.setHeader("Content-Type", "application/json; charset=utf-8")
-        res.status(200).end(retryContent)
-        return
-      } catch {
-        // 重试失败则返回首轮结果（降级）
-      }
-    }
-
+    // 单次调用直接返回（Vercel Hobby 60s 上限，不做校验重试避免叠加超时）
     applyCors(req, res)
     res.setHeader("Content-Type", "application/json; charset=utf-8")
     res.status(200).end(JSON.stringify(parsed))
