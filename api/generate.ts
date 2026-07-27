@@ -44,7 +44,7 @@ function applyCors(req: NodeReq, res: NodeRes): string {
   const origin = getOrigin(req)
   const allowed = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN_PATTERNS[0] as string
   res.setHeader("Access-Control-Allow-Origin", allowed)
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Access-Code")
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
   return allowed
 }
@@ -200,18 +200,6 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
   if (req.method !== "POST") {
     jsonError(req, res, 405, { error: "Method Not Allowed" })
     return
-  }
-
-  // ===== 访问口令校验 =====
-  const accessCode = process.env.ACCESS_CODE
-  if (accessCode) {
-    const h = req.headers
-    const raw = h["x-access-code"] || h["X-Access-Code"]
-    const provided = Array.isArray(raw) ? raw[0] || "" : raw || ""
-    if (provided !== accessCode) {
-      jsonError(req, res, 401, { error: "未授权访问：口令错误或缺失" })
-      return
-    }
   }
 
   // ===== DeepSeek 官网 API 配置 =====
