@@ -179,15 +179,6 @@ export default async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "Method Not Allowed" }, 405, req)
   }
 
-  // ===== 访问口令校验：防止未授权调用薅掉 API 额度 =====
-  const accessCode = process.env.ACCESS_CODE
-  if (accessCode) {
-    const provided = req.headers.get("X-Access-Code") || ""
-    if (provided !== accessCode) {
-      return jsonResponse({ error: "未授权访问：口令错误或缺失" }, 401, req)
-    }
-  }
-
   const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
     return jsonResponse({ error: "DEEPSEEK_API_KEY 环境变量未配置" }, 500, req)

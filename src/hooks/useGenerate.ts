@@ -213,27 +213,15 @@ export function useGenerate() {
     setLoading(true)
     setError(null)
     try {
-      // 从 sessionStorage 读取访问口令
-      let accessCode = ''
-      try {
-        accessCode = sessionStorage.getItem('ythub_access_code') || ''
-      } catch {
-        // 忽略
-      }
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(accessCode ? { 'X-Access-Code': accessCode } : {}),
         },
         body: JSON.stringify({ topic, extra: extra?.trim() || undefined }),
-        // DeepSeek 官网 + JSON mode 实测 5-10s 完成。
-        // Vercel Node Runtime 函数超时 60s，前端给 90s 总超时留足余量。
+        // GLM-4.5-Air 生成约 20-30 秒，90 秒超时留足余量
         signal: AbortSignal.timeout(90000),
       })
-      if (response.status === 401) {
-        throw new Error('访问口令错误或已失效，请重新输入口令')
-      }
       if (!response.ok) {
         // 非 2xx：后端通常返回 JSON 错误对象，尝试解析给出明确提示
         let detail = `请求失败: ${response.status}`
