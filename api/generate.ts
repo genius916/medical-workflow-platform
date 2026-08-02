@@ -55,133 +55,56 @@ function jsonError(req: NodeReq, res: NodeRes, status: number, body: unknown): v
   res.status(status).end(JSON.stringify(body))
 }
 
-const SYSTEM_PROMPT = `你是一位资深的中西医执业医师考试辅导专家，严格依据2026年中西医执业医师考试官方大纲。
+// 动态提取与用户输入疾病相关的知识库片段，避免注入全部 59KB 导致 flash 超时
+function extractRelevantKnowledge(topic: string, knowledge: string): string {
+  // 提取 topic 中的疾病关键词（去掉年份、考试、引号等噪音）
+  const cleanTopic = topic
+    .replace(/2026|中西医|执业医师|考试|笔试|技能|执医|速记|"|"|'/g, '')
+    .replace(/——|-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleanTopic) return knowledge // 兜底：无法识别则全量注入
 
-【最高优先级原则】
-你必须严格依据下方"考试资料知识库"生成中医内容（证型、选方、辨证秒杀、治法），不得自行编造或更改。
+  // 把知识库按"诊断公式"分隔成疾病块（每个疾病块含诊断公式+辨证论治+证型+方剂）
+  const blocks = knowledge.split(/\n(?=诊断公式)/)
+  if (blocks.length <= 1) return knowledge
 
-- 如果用户输入的疾病在知识库中能找到对应条目，必须**完全使用知识库中列出的证型数量和对应选方**，一个不能多，一个不能少。
-- 知识库由 PDF 表格提取，部分疾病名或方剂名可能因表格换行被拆成两行（如"急性上呼吸\n道感染"应为"急性上呼吸道感染"，"柴胡疏肝散合胃\n苓汤"应为"柴胡疏肝散合胃苓汤"），你需要根据上下文合并还原为完整名称。
-- syndromes 数组与 formulaRows 数组的证型必须**完全一致**（数量和内容都对齐知识库）。
-- 辨证秒杀（symptom 字段）使用知识库中该证型对应的"辨证秒杀"描述。
-- 如果用户输入的疾病在知识库中找不到，则按考试大纲通用知识生成，但要明确在 memoryCard.definition 中标注"该疾病不在官方速记资料范围内，内容供参考"。
-
-【其他生成要求】
-1. coreSymptoms 是4个汉字组成的数组（如["咳","痰","喘","肿"]），是该疾病最具特征性的4个字
-2. differentialRows 4个鉴别诊断，每个包含 disease、symptom、key 三个字段
-3. treatmentCards 4个治疗要点，每个包含 num、title、desc 三个字段
-4. diagnosisPoints 3条诊断要点
-5. westernTreatment 5条西医治疗原则（参考西医指南，分一般治疗、对症治疗、对因治疗、特殊治疗）
-6. compliance 3条（医学准确性、专业术语规范、平台社区公约）
-7. distribution.xiaohongshu 适合小红书发布的文案（带emoji和话题标签，300-500字）
-8. distribution.wechat 适合公众号的长文格式（800-1200字，有小标题）
-9. memoryCard.title 是疾病全称速记卡片
-10. memoryCard.category 是科室·系统分类（如"内科·循环系统"）
-11. memoryInfographic.topicBadge 是"有天同学·医考干货"
-12. memoryInfographic.title 是"26中西医执医技能考点速记图"
-13. memoryInfographic.subtitle 是疾病名（含中医病名/西医病名）
-14. memoryInfographic.footer 是"有天同学的医考干货 ｜ 26中西医技能必背"
-15. distribution.shareLink 是分享链接（设为"https://ythub.work/flow/" + 疾病拼音缩写）
-16. memoryInfographic.diagnosisStandard 是该疾病的诊断标准概述（必须随疾病改变）
-17. memoryInfographic.keyDiagnosisCriteria 是该疾病最具特异性、最必背的诊断标准（必须随疾病改变，是关键指标/阈值/体征）
-18. 【附加要求——硬性满足，违反即为不合格】用户消息中可能含"【附加要求】xxx"段，是用户对本次生成的额外指令。硬性要求如下：
-    (1) 附加要求中给出的具体数值、阈值、分类、分度、分期、条目（如"心率<60次/分""I度/II度/III度房室传导阻滞""病态窦房结综合征心率<50次/分"），必须逐条原样或近原样呈现到 diagnosisPoints / definition / keyDiagnosisCriteria 中，不得概括化、不得简化合并、不得遗漏任何一条。
-    (2) 附加要求中若列出 N 个条目，diagnosisPoints 至少展开 N 条对应内容，每条对应一个亚型/分度，严禁压缩成 1-2 句概况。
-    (3) 【禁止用"或"合并条目】严禁写成"窦性心动过缓、房室传导阻滞或病态窦房结综合征"这种把多个亚型塞进一句话的概况式表述。每个亚型必须是独立的一条 diagnosisPoints，且包含其特异性数值/分度标准。
-    (4) 【禁止一句话覆盖】严禁用"符合...的特异性表现"这类模糊话术一笔带过，必须把每个亚型的具体诊断标准（数值、分度、心电图特征）写出来。
-    (5) 【禁止自相矛盾】全文同一指标的前后数值必须完全一致，严禁出现"一处<60、另一处<50"的矛盾。若附加要求与知识库默认数值不同，以附加要求为准。
-    (6) 在不违背知识库证型选方的前提下，必须满足附加要求的其他指令（如"重点讲房颤的鉴别""补充并发症处理"）。
-19. 【多亚型疾病展开——硬性】凡诊断公式或附加要求中列出多个亚型/分度/分期的疾病，必须在 definition 和 diagnosisPoints 中逐条详细说明各亚型的特征性表现与鉴别要点，不得只给概况、不得合并条目。例如：
-    - 快速性心律失常：窦速、房早、室早、阵发性室上速、房扑、房颤、室速，逐条列心电图特征。
-    - 缓慢性心律失常：窦性心动过缓、房室传导阻滞(I度/II度I型/II度II型/III度)、病态窦房结综合征，逐条列诊断标准与数值。
-    - 急性心肌梗死：ST段抬高型/非ST段抬高型，分别说明。
-20. 【口诀格式——硬性规则，违反任意一条即为不合格】memoryCard.mnemonic 和 memoryInfographic.formulaMnemonic 必须是一首对仗工整、一韵到底、字数全篇严格对称、朗朗上口的口诀。硬性要求如下：
-    (1)【字数严格对称·全篇一致】整首口诀只允许采用以下四种句式之一，且全篇每一小句都必须是该字数，严禁任何一句多一字或少一字：
-        - 七字句：每小句恰好 7 字
-        - 三三句：每小句为"3字+3字"
-        - 四四句：每小句为"4字+4字"
-        - 五五句：每小句为"5字+5字"
-    (2)【长方名必须缩写】若某证型的方剂名（尤其含"合"字的复方，如"参附汤合桂枝甘草龙骨牡蛎汤""苓桂术甘汤合丹参饮"）超过目标句式容纳字数，必须缩写为该方的核心标识（取主方名或关键药味缩写）。仅在方名被缩写时，才在 mnemonicExplain 中用极简格式注明缩写对应关系（如"参附汤=参附汤合桂枝甘草龙骨牡蛎汤"），每条一行；未缩写的方剂不写、不解释。例如：
-        - "参附汤合桂枝甘草龙骨牡蛎汤" → 七字句内可缩为"参附桂甘牡"或"参附桂枝汤"
-        - "苓桂术甘汤合丹参饮" → 可缩为"苓桂丹参汤"
-        - "柴胡疏肝散合胃苓汤" → 可缩为"柴疏合胃苓"或"柴疏胃苓汤"
-        严禁因方名过长就破坏字数对称（如写成7字句+5字句）。
-    (3)【一韵到底】全首口诀每一小句的末字必须押同一韵（允许近韵，不可乱韵、不可跳韵）。若方剂名末字不押该韵，须用谐音字替换或加垫字凑韵（如"生脉饮"→"生脉方"以与"保元汤"同押 ang 韵；"桃仁红花煎"→"桃红方"）。
-    (4)【对仗对称】上下句结构相同（证型关键词 + 方名缩写），词性相对，节奏一致。
-    (5)【一句含多证型多方·极致精简全覆盖】每一小句尽量塞入 2~3 个证型 + 2~3 个方剂（如"瘀阻血府痰瓜涤"一句含血府逐瘀汤+瓜蒌薤白半夏汤合涤痰汤两证型两方）。以最大化信息密度、最小化行数为目标，7 证型应压到 3~4 句。覆盖该疾病在知识库中的全部证型，不可遗漏。若某证型知识库给出"A方或B方""A方合B汤"等多方，口诀中只取其一（取较短、较易押韵者），另一方不写，以减轻记忆负担。
-    (5a)【方名可极度缩写】为压字数，方名可缩为 2~3 字核心标识，例如："血府逐瘀汤"→"血府"；"瓜蒌薤白半夏汤合涤痰汤"→"瓜涤"（取两方各1字）；"枳实薤白桂枝汤合当归四逆汤"→"枳薤当四逆"；"补阳还五汤"→"补还"；"炙甘草汤"→"炙草"；"生脉散"→"生脉"；"左归丸"→"左归"；"右归丸"→"右归"；"参附汤合右归丸"→"右参"。缩写越精炼越好，以"缩写=全称"对应关系在 mnemonicExplain 注明。
-    (6)【精简精准·谐音助记·不拘顺序】仅用证型关键词 + 方名，不堆砌症状；鼓励用谐音、联想助记；能用一句说完就不用两句，全首口诀行数越少越好。证型顺序可打乱、自由重排，以押韵和记忆便利为准，不要求按知识库原顺序。
-    (7)【生成后自检——必做】写完口诀后，必须逐句数字数，确认每一小句字数完全相同、末字同韵；若发现长短不一或跳韵，必须改写至完全合规后再输出。
-    错误示例（禁止）：
-      ✗ "心阳参附桂甘牡，心肾参附真武汤，气阴炙甘草，痰浊涤痰汤，心脉桃仁红花煎"（7/7/5/5/7，字数严重不一，且不押韵，且每句只一证型太松散）
-      ✗ "气虚血瘀保元汤，气阴两虚证用生脉饮"（前7字、后8字）
-      ✗ "心虚胆怯安神定，心血不足归脾汤"（"定""汤"不押韵）
-    正确示例1（冠心病心绞痛·七字句·押 i 韵·7证型全覆盖·4句极简版·方名极度缩写·顺序已重排）：
-      ✓ "瘀阻血府痰瓜涤，气虚补还阴炙脉，心肾阴左阳右参，阴寒枳薤当四逆。"
-      对应：心血瘀阻-血府逐瘀汤；痰浊内阻-瓜蒌薤白半夏汤合涤痰汤（取瓜涤）；气虚血瘀-补阳还五汤（补还）；气阴两虚-生脉散合炙甘草汤（取炙脉）；心肾阴虚-左归丸（左）；心肾阳虚-参附汤合右归丸（取右参）；阴寒凝滞-枳实薤白桂枝汤合当归四逆汤（枳薤当四逆）。
-    正确示例2（缓慢性心律失常·七字句·押 ang 韵·5证型全覆盖·3句极简版）：
-      ✓ "心阳参附肾真武，气阴炙草痰涤汤，心脉瘀阻桃红方。"
-      对应：心阳不振-参附汤；心肾阳虚-真武汤；气阴两虚-炙甘草汤；痰浊阻滞-涤痰汤；心脉瘀阻-桃仁红花煎（桃红方）。
-    memoryCard.mnemonicExplain 和 memoryInfographic.formulaMnemonicExplain 当口诀中存在 2~3 字极度缩写方名（如"瓜涤""补还""右参""枳薤当四逆"）时填写，格式为"缩写=全称"每条一行；若方名均为完整原方名（如"血府逐瘀汤""真武汤"）则填空字符串 ""。
-
-请直接返回JSON，不要有任何额外文字或markdown格式标记。
-
-【极其重要】所有数组元素必须是"对象"或"字符串"按下方示例的结构，绝对不能把对象数组退化成字符串数组。具体要求：
-- syndromes、formulaRows、differentialRows、treatmentCards、compliance 必须是「对象数组」，每个元素都是带固定字段的对象（绝不能只写证型名字符串）
-- diagnosisPoints、westernTreatment、coreSymptoms 必须是「字符串数组」，每个元素都是字符串
-
-JSON 顶层结构示例（必须严格按此字段结构填充）：
-{
-  "memoryCard": {
-    "title": "肝硬化速记卡片",
-    "category": "内科·消化系统",
-    "definition": "...",
-    "etiology": "...",
-    "diagnosisPoints": ["要点1", "要点2", "要点3"],
-    "syndromes": [
-      {"type": "气滞湿阻证", "formula": "柴胡疏肝散合胃苓汤", "alt": false},
-      {"type": "寒湿困脾证", "formula": "实脾饮", "alt": true}
-    ],
-    "westernTreatment": ["治疗1", "治疗2", "治疗3", "治疗4", "治疗5"],
-    "mnemonic": "...",
-    "mnemonicExplain": "..."
-  },
-  "memoryInfographic": {
-    "topicBadge": "有天同学 · 医考干货",
-    "title": "26中西医执医技能考点速记图",
-    "subtitle": "肝硬化（鼓胀）",
-    "coreSymptoms": ["鼓", "胀", "腹", "水"],
-    "diagnosisStandard": "...",
-    "keyDiagnosisCriteria": "...",
-    "formulaRows": [
-      {"type": "气滞湿阻证", "symptom": "腹胀按之不坚+胁胀痛", "formula": "柴胡疏肝散合胃苓汤", "alt": false},
-      {"type": "寒湿困脾证", "symptom": "腹大胀满+得热则缓", "formula": "实脾饮", "alt": true}
-    ],
-    "formulaMnemonic": "...",
-    "formulaMnemonicExplain": "...",
-    "differentialRows": [
-      {"disease": "肝硬化", "symptom": "...", "key": "...", "alt": false},
-      {"disease": "结核性腹膜炎", "symptom": "...", "key": "...", "alt": true}
-    ],
-    "treatmentCards": [
-      {"num": "1", "title": "一般治疗", "desc": "休息+营养支持"},
-      {"num": "2", "title": "病因治疗", "desc": "..."}
-    ],
-    "footer": "有天同学的医考干货 ｜ 26中西医技能必背"
-  },
-  "compliance": [
-    {"label": "医学准确性", "description": "..."},
-    {"label": "专业术语规范", "description": "..."},
-    {"label": "平台社区公约", "description": "..."}
-  ],
-  "distribution": {"xiaohongshu": "...", "wechat": "...", "shareLink": "https://ythub.work/flow/gzh"}
+  const matched: string[] = []
+  const keywords = cleanTopic.split(' ').filter((k) => k.length >= 2)
+  for (const block of blocks) {
+    // 块内是否含关键词（疾病名常被拆成多行，故整块匹配）
+    const hit = keywords.some((kw) => block.includes(kw))
+    if (hit) matched.push(block)
+  }
+  // 没匹配到则返回全部（兜底）；匹配到则只返回相关块 + 上下文
+  if (matched.length === 0) return knowledge
+  return matched.join('\n诊断公式\n')
 }
 
-【考试资料知识库】
-以下是2026年中西医执业医师实践技能考试第一站辨证选方速记官方资料，所有中医证型与选方必须严格以此为准：
+// 根据动态知识库片段构建 system prompt（精简版，确保 60s 内完成生成）
+function buildSystemPrompt(topic: string, knowledge: string): string {
+  const relevantKnowledge = extractRelevantKnowledge(topic, knowledge)
+  return `你是中西医执业医师考试辅导专家，严格依据2026年考试大纲。严格依据下方知识库生成证型与选方，不得编造。知识库由PDF表格提取，疾病名/方剂名可能被换行拆开（如"急性上呼吸\\n道感染"应为"急性上呼吸道感染"），需根据上下文合并还原。syndromes与formulaRows的证型必须完全一致且对齐知识库。知识库中无该疾病时，按大纲通用知识生成并在definition标注"该疾病不在官方速记资料范围内"。
 
-${examKnowledge}
-`
+【附加要求】用户消息可能含"【附加要求】xxx"段。其中给出的数值、阈值、分类、分度、分期、条目必须逐条原样呈现到diagnosisPoints/definition/keyDiagnosisCriteria，不得概括、合并或遗漏。禁止用"或"合并多亚型为一句话，每个亚型须独立成条且含特异性标准。全文同一指标前后数值必须一致。多亚型疾病（如心律失常、心梗分型）必须在definition和diagnosisPoints逐条详列。
+
+【口诀格式·硬性】mnemonic和formulaMnemonic须是对仗工整、一韵到底、字数全篇严格对称的口诀：
+1. 全篇只选一种句式：七字句(每句7字) 或 三三句(3+3) 或 四四句(4+4) 或 五五句(5+5)，严禁混用。
+2. 每小句尽量含2~3个证型+方剂，覆盖知识库全部证型，行数越少越好。多方剂("A方或B方""A方合B汤")只取其一。
+3. 方名可极度缩写为2~3字（如"血府逐瘀汤"→"血府"，"瓜蒌薤白半夏汤合涤痰汤"→"瓜涤"，"炙甘草汤"→"炙草"），缩写关系填入mnemonicExplain（格式"缩写=全称"每条一行），未缩写则填""。
+4. 末字必须同韵，方名末字不押韵时用谐音/垫字凑韵。证型顺序可打乱以就韵。生成后逐句数字数自检。
+
+【输出字段】
+- memoryCard: title(疾病全称), category(如"内科·消化系统"), definition, etiology, diagnosisPoints(字符串数组,≥3条), syndromes(对象数组{type,formula,alt}), westernTreatment(字符串数组,5条), mnemonic, mnemonicExplain
+- memoryInfographic: topicBadge="有天同学·医考干货", title="26中西医执医技能考点速记图", subtitle(疾病名), coreSymptoms(4个汉字数组), diagnosisStandard, keyDiagnosisCriteria, formulaRows(对象数组{type,symptom,formula,alt}), formulaMnemonic, formulaMnemonicExplain, differentialRows(对象数组{disease,symptom,key,alt},4条), treatmentCards(对象数组{num,title,desc},4条), footer="有天同学的医考干货 ｜ 26中西医技能必背"
+- compliance: 对象数组{label,description},3条(医学准确性/专业术语规范/平台社区公约)
+- distribution: xiaohongshu(300-500字带emoji话题), wechat(800-1200字带小标题), shareLink="https://ythub.work/flow/"+拼音缩写
+
+对象数组(syndromes,formulaRows,differentialRows,treatmentCards,compliance)每个元素必须是带固定字段的对象，不可退化为字符串数组。diagnosisPoints/westernTreatment/coreSymptoms必须是字符串数组。直接返回JSON，无额外文字或markdown。
+
+【知识库】
+${relevantKnowledge}`
+}
 
 // Vercel 函数超时：Hobby 60s 上限，Pro 可达 300s。
 // 知识库 59KB + 规则较多，flash 单次生成可能需 40-80s，故设 300s 给足空间。
@@ -259,7 +182,7 @@ export default async (req: NodeReq, res: NodeRes): Promise<void> => {
     try {
       content = await callDeepSeek(
         [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: buildSystemPrompt(topic, examKnowledge) },
           { role: "user", content: userMessage },
         ],
         modelName,
