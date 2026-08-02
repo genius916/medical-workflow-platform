@@ -88,17 +88,21 @@ function buildSystemPrompt(topic: string, knowledge: string): string {
 
 【附加要求】用户消息可能含"【附加要求】xxx"段。其中给出的数值、阈值、分类、分度、分期、条目必须逐条原样呈现到diagnosisPoints/definition/keyDiagnosisCriteria，不得概括、合并或遗漏。禁止用"或"合并多亚型为一句话，每个亚型须独立成条且含特异性标准。全文同一指标前后数值必须一致。多亚型疾病（如心律失常、心梗分型）必须在definition和diagnosisPoints逐条详列。
 
-【口诀格式·硬性】mnemonic和formulaMnemonic须是对仗工整、一韵到底、字数全篇严格对称的口诀：
+【口诀格式·硬性】mnemonic和formulaMnemonic须是对仗工整、一韵到底、字数全篇严格对称的口诀，且不需要任何解释：
 1. 全篇只选一种句式：七字句(每句7字) 或 三三句(3+3) 或 四四句(4+4) 或 五五句(5+5)，严禁混用。
 2. 每小句尽量含2~3个证型+方剂，覆盖知识库全部证型，行数越少越好。多方剂("A方或B方""A方合B汤")只取其一。
-3. 方名可极度缩写为2~3字（如"血府逐瘀汤"→"血府"，"瓜蒌薤白半夏汤合涤痰汤"→"瓜涤"，"炙甘草汤"→"炙草"），缩写关系填入mnemonicExplain（格式"缩写=全称"每条一行），未缩写则填""。
+3. 方名可极度缩写为2~3字（如"血府逐瘀汤"→"血府"，"瓜蒌薤白半夏汤合涤痰汤"→"瓜涤"，"炙甘草汤"→"炙草"）。
 4. 末字必须同韵，方名末字不押韵时用谐音/垫字凑韵。证型顺序可打乱以就韵。生成后逐句数字数自检。
+5. mnemonicExplain和formulaMnemonicExplain一律填空字符串""，不生成任何口诀解释。
 
 【输出字段】
-- memoryCard: title(疾病全称), category(如"内科·消化系统"), definition, etiology, diagnosisPoints(字符串数组,≥3条), syndromes(对象数组{type,formula,alt}), westernTreatment(字符串数组,5条), mnemonic, mnemonicExplain
-- memoryInfographic: topicBadge="有天同学·医考干货", title="26中西医执医技能考点速记图", subtitle(疾病名), coreSymptoms(4个汉字数组), diagnosisStandard, keyDiagnosisCriteria, formulaRows(对象数组{type,symptom,formula,alt}), formulaMnemonic, formulaMnemonicExplain, differentialRows(对象数组{disease,symptom,key,alt},4条), treatmentCards(对象数组{num,title,desc},4条), footer="有天同学的医考干货 ｜ 26中西医技能必背"
+- memoryCard: title(疾病全称), category(如"内科·消化系统"), definition, etiology, diagnosisPoints(字符串数组,≥3条), syndromes(对象数组{type,formula,alt}), westernTreatment(字符串数组,5条,纯西医治疗), mnemonic, mnemonicExplain(填"")
+- memoryInfographic: topicBadge="有天同学·医考干货", title="26中西医执医技能考点速记图", subtitle(疾病名), coreSymptoms(4个汉字数组), diagnosisStandard(疾病诊断标准概述,不可为空), keyDiagnosisCriteria(该疾病最具特异性最必背的诊断标准,含关键数值/阈值/体征,不可为空), formulaRows(对象数组{type,symptom,formula,alt}), formulaMnemonic, formulaMnemonicExplain(填""), differentialRows(对象数组{disease,symptom,key,alt},4条), treatmentCards(对象数组{num,title,desc},4条), footer="有天同学的医考干货 ｜ 26中西医技能必背"
 - compliance: 对象数组{label,description},3条(医学准确性/专业术语规范/平台社区公约)
 - distribution: xiaohongshu(300-500字带emoji话题), wechat(800-1200字带小标题), shareLink="https://ythub.work/flow/"+拼音缩写
+
+【西医治疗·硬性】treatmentCards和westernTreatment必须是纯西医治疗内容（如一般治疗/对症治疗/对因治疗/药物治疗/手术治疗/特殊治疗），严禁出现中医证型、中医方剂、辨证论治内容。违反即为不合格。
+【必背诊断标准·硬性】keyDiagnosisCriteria不可为空字符串，必须填写该疾病最具特异性的诊断标准（关键指标/阈值/体征/检查结果），如"Hp感染+胃镜确诊""血压≥140/90mmHg"等。
 
 对象数组(syndromes,formulaRows,differentialRows,treatmentCards,compliance)每个元素必须是带固定字段的对象，不可退化为字符串数组。diagnosisPoints/westernTreatment/coreSymptoms必须是字符串数组。直接返回JSON，无额外文字或markdown。
 

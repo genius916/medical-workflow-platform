@@ -336,14 +336,6 @@ const MemoryInfographic = forwardRef<HTMLElement, MemoryInfographicProps>(functi
           >
             口诀：{data.formulaMnemonic}
           </p>
-          {data.formulaMnemonicExplain && data.formulaMnemonicExplain.trim() && (
-            <p
-              className="mt-0.5 m-0 text-[14px] leading-[1.4] font-medium"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              {data.formulaMnemonicExplain}
-            </p>
-          )}
         </div>
       </div>
 
