@@ -144,7 +144,7 @@ export function deepseekApiPlugin(apiKey: string): Plugin {
             try {
               content = await callDeepSeek(
                 [
-                  { role: 'system', content: SYSTEM_PROMPT },
+                  { role: 'system', content: buildSystemPrompt(topic, examKnowledge) },
                   { role: 'user', content: userMessage },
                 ],
                 modelName,
