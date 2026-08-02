@@ -196,21 +196,24 @@ const MemoryInfographic = forwardRef<HTMLElement, MemoryInfographicProps>(functi
           <span aria-hidden className="text-[16px]" style={{ lineHeight: '1' }}>🩺</span>
         </div>
         <div className="flex gap-2 justify-between">
-          {data.coreSymptoms.map((char) => (
-            <span
-              key={char}
-              className="inline-flex items-center justify-center shrink-0 rounded-full text-[26px] font-black"
-              style={{
-                width: '52px',
-                height: '52px',
-                backgroundColor: 'color-mix(in srgb, var(--chart-1) 14%, var(--card))',
-                color: 'var(--chart-4)',
-                border: '1.5px solid color-mix(in srgb, var(--chart-1) 35%, transparent)',
-              }}
-            >
-              {char}
-            </span>
-          ))}
+          {data.coreSymptoms.slice(0, 4).map((char, idx) => {
+            const single = typeof char === 'string' && char.length > 0 ? char[0] : ''
+            return (
+              <span
+                key={idx}
+                className="inline-flex items-center justify-center shrink-0 rounded-full text-[26px] font-black"
+                style={{
+                  width: '52px',
+                  height: '52px',
+                  backgroundColor: 'color-mix(in srgb, var(--chart-1) 14%, var(--card))',
+                  color: 'var(--chart-4)',
+                  border: '1.5px solid color-mix(in srgb, var(--chart-1) 35%, transparent)',
+                }}
+              >
+                {single}
+              </span>
+            )
+          })}
         </div>
         <p
           className="m-0 text-[16px] leading-[1.45] font-medium"
